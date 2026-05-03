@@ -1,0 +1,14 @@
+{
+  "name": "notification-system",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @notification/shared && npm run build --workspaces --if-present",
+    "dev:producer": "npm run dev -w @notification/producer",
+    "dev:poller": "npm run dev -w @notification/outbox-poller",
+    "dev:consumer": "npm run dev -w @notification/consumer"
+  }
+}

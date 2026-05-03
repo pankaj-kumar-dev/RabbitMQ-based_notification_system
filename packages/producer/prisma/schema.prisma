@@ -1,0 +1,21 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Outbox {
+  id           String    @id @default(uuid())
+  event_type   String
+  payload      Json
+  status       String    @default("PENDING")
+  retry_count  Int       @default(0)
+  created_at   DateTime  @default(now())
+  processed_at DateTime?
+
+  @@index([status, created_at])
+  @@map("outbox")
+}
