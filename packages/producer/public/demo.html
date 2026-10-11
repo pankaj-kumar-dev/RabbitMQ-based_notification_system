@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>Live Demo — Distributed Notification System</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      :root {
+        --bg: #0d1117; --surface: #161b22; --surface2: #21262d;
+        --border: #30363d; --text: #e6edf3; --muted: #8b949e;
+        --accent: #58a6ff; --green: #56d364; --orange: #ffa657;
+        --red: #ff7b72; --yellow: #d29922; --purple: #d2a8ff;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", monospace;
+        background: var(--bg); color: var(--text);
+        height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+      }
+      header {
+        background: var(--surface); border-bottom: 1px solid var(--border);
+        padding: 10px 20px; display: flex; align-items: center; gap: 12px;
+        flex-shrink: 0;
+      }
+      header h1 { font-size: 14px; font-weight: 600; }
+      header .sub { font-size: 11px; color: var(--muted); }
+      header nav { margin-left: auto; display: flex; gap: 12px; }
+      header nav a {
+        font-size: 12px; color: var(--muted); text-decoration: none;
+        padding: 4px 8px; border-radius: 5px; border: 1px solid var(--border);
+      }
+      header nav a:hover { color: var(--text); }
+
+      .main { display: flex; flex: 1; overflow: hidden; }
+
+      /* ── LEFT PANEL: controls + queue depths ── */
+      .sidebar {
+        width: 280px; flex-shrink: 0; border-right: 1px solid var(--border);
+        display: flex; flex-direction: column; overflow: hidden;
+      }
+      .section {
+        padding: 16px; border-bottom: 1px solid var(--border);
+      }
+      .section-title {
+        font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
+        text-transform: uppercase; color: var(--muted); margin-bottom: 12px;
+      }
+      .btn {
+        display: block; width: 100%; padding: 9px 14px; border-radius: 6px;
+        font-size: 13px; font-weight: 600; cursor: pointer; border: none;
+        margin-bottom: 8px; text-align: left; transition: filter 0.1s;
+      }
+      .btn:hover { filter: brightness(1.12); }
+      .btn:last-child { margin-bottom: 0; }
+      .btn-email { background: #1f3a5c; color: var(--accent); border: 1px solid #2d5986; }
+      .btn-sms   { background: #2d1f4a; color: var(--purple); border: 1px solid #4a2d7a; }
+      .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+      .fail-toggle { display: flex; align-items: flex-start; gap: 10px; margin-top: 4px; }
+      .fail-toggle input { margin-top: 2px; accent-color: var(--red); cursor: pointer; }
+      .fail-toggle label { font-size: 12px; line-height: 1.5; cursor: pointer; }
+      .fail-note { font-size: 10px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+
+      /* queue depth bars */
+      .queue-list { display: flex; flex-direction: column; gap: 10px; }
+      .queue-item {}
+      .queue-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
+      .queue-name { font-size: 11px; color: var(--muted); font-family: monospace; }
+      .queue-count { font-size: 11px; font-weight: 700; }
+      .queue-bar-bg {
+        height: 4px; background: var(--surface2); border-radius: 2px; overflow: hidden;
+      }
+      .queue-bar {
+        height: 100%; border-radius: 2px; transition: width 0.5s ease;
+      }
+      .q-retry1s  .queue-bar { background: var(--yellow); }
+      .q-retry5s  .queue-bar { background: var(--orange); }
+      .q-retry30s .queue-bar { background: var(--red); }
+      .q-dlq      .queue-bar { background: #b91c1c; }
+      .q-retry1s  .queue-count { color: var(--yellow); }
+      .q-retry5s  .queue-count { color: var(--orange); }
+      .q-retry30s .queue-count { color: var(--red); }
+      .q-dlq      .queue-count { color: #ef4444; }
+
+      .queue-status-err { font-size: 11px; color: var(--muted); text-align: center; padding: 8px 0; }
+
+      /* explain box */
+      .explain {
+        padding: 12px 16px; flex: 1; overflow-y: auto;
+      }
+      .explain-title {
+        font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
+        text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+      }
+      .scenario { margin-bottom: 14px; }
+      .scenario-num {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 18px; height: 18px; border-radius: 50%; font-size: 10px;
+        font-weight: 700; background: var(--surface2); color: var(--accent);
+        margin-right: 6px; flex-shrink: 0; vertical-align: middle;
+      }
+      .scenario p { font-size: 11px; line-height: 1.6; color: #c9d1d9; display: inline; }
+
+      /* ── RIGHT PANEL: event log ── */
+      .log-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+      .log-header {
+        padding: 12px 16px; border-bottom: 1px solid var(--border);
+        display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+      }
+      .log-header h2 { font-size: 12px; font-weight: 600; }
+      .poll-badge {
+        font-size: 10px; padding: 2px 8px; border-radius: 12px;
+        background: var(--surface2); color: var(--muted);
+        border: 1px solid var(--border);
+      }
+      .last-update { margin-left: auto; font-size: 10px; color: var(--muted); }
+
+      .log-table-wrap { flex: 1; overflow-y: auto; }
+      table {
+        width: 100%; border-collapse: collapse; font-size: 12px;
+      }
+      thead th {
+        position: sticky; top: 0; background: var(--surface);
+        padding: 8px 16px; text-align: left; font-size: 10px;
+        font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
+        color: var(--muted); border-bottom: 1px solid var(--border);
+      }
+      tbody tr { border-bottom: 1px solid rgba(48,54,61,0.5); }
+      tbody tr:hover { background: rgba(255,255,255,.02); }
+      td { padding: 8px 16px; vertical-align: middle; }
+      .td-id { font-family: monospace; font-size: 11px; color: var(--muted); }
+      .td-type { font-weight: 600; font-size: 11px; }
+      .td-type.email { color: var(--accent); }
+      .td-type.sms   { color: var(--purple); }
+
+      .badge {
+        display: inline-flex; align-items: center; gap: 5px;
+        font-size: 10px; font-weight: 700; padding: 2px 8px;
+        border-radius: 12px;
+      }
+      .badge::before { content: '●'; font-size: 8px; }
+      .badge-pending  { background: rgba(139,148,158,.1); color: var(--muted);   border: 1px solid var(--border); }
+      .badge-processed{ background: rgba(86,211,100,.1);  color: var(--green);   border: 1px solid rgba(86,211,100,.3); }
+      .badge-failed   { background: rgba(255,123,114,.1); color: var(--red);     border: 1px solid rgba(255,123,114,.3); }
+
+      .td-age { color: var(--muted); font-size: 11px; text-align: right; }
+
+      .empty-log {
+        padding: 60px 20px; text-align: center; color: var(--muted); font-size: 13px;
+      }
+      .empty-log .hint { font-size: 11px; margin-top: 8px; opacity: 0.7; }
+
+      /* toast */
+      #toast {
+        position: fixed; bottom: 20px; right: 20px;
+        background: var(--surface2); border: 1px solid var(--border);
+        border-radius: 8px; padding: 10px 16px; font-size: 12px;
+        max-width: 320px; opacity: 0; transition: opacity 0.2s; pointer-events: none;
+        z-index: 100;
+      }
+      #toast.show { opacity: 1; }
+      #toast.ok  { border-color: rgba(86,211,100,.4); color: var(--green); }
+      #toast.err { border-color: rgba(255,123,114,.4); color: var(--red); }
+
+      ::-webkit-scrollbar { width: 5px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Distributed Notification System — Live Demo</h1>
+        <span class="sub">Outbox · RabbitMQ · DLQ retry chain · Redis idempotency</span>
+      </div>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/architecture.html">Architecture</a>
+      </nav>
+    </header>
+
+    <div class="main">
+      <!-- SIDEBAR -->
+      <div class="sidebar">
+
+        <!-- Actions -->
+        <div class="section">
+          <div class="section-title">Send Notification</div>
+          <button class="btn btn-email" id="btn-email" onclick="sendNotify('email')">
+            ✉ Send Email Notification
+          </button>
+          <button class="btn btn-sms" id="btn-sms" onclick="sendNotify('sms')">
+            📱 Send SMS Notification
+          </button>
+        </div>
+
+        <!-- Failure mode -->
+        <div class="section">
+          <div class="section-title">Demo Controls</div>
+          <div class="fail-toggle">
+            <input type="checkbox" id="fail-mode-check" onchange="handleFailMode(this)" />
+            <label for="fail-mode-check">Failure Mode</label>
+          </div>
+          <p class="fail-note">
+            Triggers consumer to NACK every message. Watch the retry chain:
+            retry_1s → retry_5s → retry_30s → DLQ (~36s total).
+            <br><br>
+            To activate: set <code>FAIL_MODE=true</code> in docker-compose and restart the consumer.
+          </p>
+        </div>
+
+        <!-- Queue depths -->
+        <div class="section">
+          <div class="section-title">Queue Depths</div>
+          <div class="queue-list" id="queue-list">
+            <div class="queue-item q-retry1s">
+              <div class="queue-header">
+                <span class="queue-name">retry_1s</span>
+                <span class="queue-count" id="q-retry1s">0</span>
+              </div>
+              <div class="queue-bar-bg"><div class="queue-bar" id="bar-retry1s" style="width:0%"></div></div>
+            </div>
+            <div class="queue-item q-retry5s">
+              <div class="queue-header">
+                <span class="queue-name">retry_5s</span>
+                <span class="queue-count" id="q-retry5s">0</span>
+              </div>
+              <div class="queue-bar-bg"><div class="queue-bar" id="bar-retry5s" style="width:0%"></div></div>
+            </div>
+            <div class="queue-item q-retry30s">
+              <div class="queue-header">
+                <span class="queue-name">retry_30s</span>
+                <span class="queue-count" id="q-retry30s">0</span>
+              </div>
+              <div class="queue-bar-bg"><div class="queue-bar" id="bar-retry30s" style="width:0%"></div></div>
+            </div>
+            <div class="queue-item q-dlq">
+              <div class="queue-header">
+                <span class="queue-name">notifications.dlq</span>
+                <span class="queue-count" id="q-dlq">0</span>
+              </div>
+              <div class="queue-bar-bg"><div class="queue-bar" id="bar-dlq" style="width:0%"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- How to read -->
+        <div class="explain">
+          <div class="explain-title">What you're watching</div>
+          <div class="scenario">
+            <span class="scenario-num">1</span>
+            <p><strong>Normal flow:</strong> Send a notification. Row appears as PENDING. Within 2s the outbox poller picks it up (FOR UPDATE SKIP LOCKED) and publishes to RabbitMQ. Consumer ACKs → PROCESSED.</p>
+          </div>
+          <div class="scenario">
+            <span class="scenario-num">2</span>
+            <p><strong>Retry chain:</strong> Set FAIL_MODE=true and restart consumer. Send a notification. Consumer throws → NACK (requeue=false) → DLX fires. Message cascades: retry_1s (1s TTL) → retry_5s (5s TTL) → retry_30s (30s TTL) → DLQ. Watch the queue depth bars fill.</p>
+          </div>
+          <div class="scenario">
+            <span class="scenario-num">3</span>
+            <p><strong>Idempotency:</strong> In the retry scenario, Redis already claimed the eventId on the first attempt. If FAIL_MODE is re-disabled, the retried message hits Redis SET NX — key exists → duplicate → ACK and drop. No double-processing.</p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- EVENT LOG -->
+      <div class="log-panel">
+        <div class="log-header">
+          <h2>Outbox Event Log</h2>
+          <span class="poll-badge">polling every 2s</span>
+          <span class="last-update" id="last-update">—</span>
+        </div>
+        <div class="log-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Event ID</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th style="text-align:right">Age</th>
+              </tr>
+            </thead>
+            <tbody id="log-body">
+              <tr>
+                <td colspan="4">
+                  <div class="empty-log">
+                    No events yet
+                    <div class="hint">Click "Send Email" or "Send SMS" to begin</div>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+      // ── Toast ──────────────────────────────────────────────────────────
+      let toastTimer;
+      function showToast(msg, type = 'ok') {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.className = 'show ' + type;
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => t.className = '', 3000);
+      }
+
+      // ── Send notification ──────────────────────────────────────────────
+      async function sendNotify(type) {
+        const btn = document.getElementById('btn-' + type);
+        btn.disabled = true;
+        const payload = type === 'email'
+          ? { to: 'demo@example.com', subject: 'Portfolio demo', body: 'Sent at ' + new Date().toISOString() }
+          : { to: '+10000000000', message: 'Demo SMS at ' + new Date().toISOString() };
+
+        try {
+          const res = await fetch('/notify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type, payload }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            showToast('Event written to outbox · eventId: ' + data.eventId.slice(0, 8) + '…', 'ok');
+            fetchStatus();
+          } else {
+            showToast('Error: ' + JSON.stringify(data), 'err');
+          }
+        } catch (err) {
+          showToast('Network error — is the producer running?', 'err');
+        } finally {
+          setTimeout(() => btn.disabled = false, 1000);
+        }
+      }
+
+      // ── Failure mode UI (informational only — actual toggle is in docker-compose) ──
+      function handleFailMode(cb) {
+        if (cb.checked) {
+          showToast('Set FAIL_MODE=true in docker-compose and restart consumer', 'err');
+        } else {
+          showToast('Set FAIL_MODE=false in docker-compose and restart consumer', 'ok');
+        }
+        setTimeout(() => cb.checked = !cb.checked, 100); // revert — it's just informational
+      }
+
+      // ── Age formatter ──────────────────────────────────────────────────
+      function age(isoStr) {
+        const secs = Math.floor((Date.now() - new Date(isoStr).getTime()) / 1000);
+        if (secs < 60) return secs + 's';
+        if (secs < 3600) return Math.floor(secs / 60) + 'm';
+        return Math.floor(secs / 3600) + 'h';
+      }
+
+      // ── Status badge ───────────────────────────────────────────────────
+      function statusBadge(status) {
+        const cls = status === 'PROCESSED' ? 'badge-processed'
+                  : status === 'FAILED'    ? 'badge-failed'
+                  : 'badge-pending';
+        return `<span class="badge ${cls}">${status}</span>`;
+      }
+
+      // ── Fetch outbox status ────────────────────────────────────────────
+      async function fetchStatus() {
+        try {
+          const res = await fetch('/status');
+          const { events } = await res.json();
+          document.getElementById('last-update').textContent =
+            'updated ' + new Date().toLocaleTimeString();
+
+          const tbody = document.getElementById('log-body');
+          if (!events || events.length === 0) return;
+
+          tbody.innerHTML = events.map(e => `
+            <tr>
+              <td class="td-id">${e.id.slice(0, 8)}…<span style="color:#4d5562">${e.id.slice(8, 13)}</span></td>
+              <td class="td-type ${e.event_type}">${e.event_type.toUpperCase()}</td>
+              <td>${statusBadge(e.status)}</td>
+              <td class="td-age">${age(e.created_at)}</td>
+            </tr>
+          `).join('');
+        } catch {
+          // silently retry on next tick
+        }
+      }
+
+      // ── Fetch queue depths ─────────────────────────────────────────────
+      async function fetchQueueStatus() {
+        try {
+          const res = await fetch('/queue-status');
+          const data = await res.json();
+
+          const max = Math.max(data.retry_1s, data.retry_5s, data.retry_30s, data.dlq, 1);
+
+          [
+            ['retry_1s',  data.retry_1s],
+            ['retry_5s',  data.retry_5s],
+            ['retry_30s', data.retry_30s],
+            ['dlq',       data.dlq],
+          ].forEach(([key, val]) => {
+            document.getElementById('q-' + key).textContent = val;
+            document.getElementById('bar-' + key).style.width = Math.round((val / max) * 100) + '%';
+          });
+        } catch {
+          // silently retry
+        }
+      }
+
+      // ── Poll ───────────────────────────────────────────────────────────
+      fetchStatus();
+      fetchQueueStatus();
+      setInterval(fetchStatus, 2000);
+      setInterval(fetchQueueStatus, 2000);
+    </script>
+  </body>
+</html>

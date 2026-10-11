@@ -68,10 +68,11 @@ services:
       dockerfile: packages/producer/Dockerfile
     container_name: producer
     ports:
-      - "3000:3000"
+      - "3002:3000"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/notifications
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
+      RABBITMQ_MGMT_URL: http://rabbitmq:15672
       PORT: "3000"
       NODE_ENV: production
       LOG_LEVEL: info
@@ -109,6 +110,7 @@ services:
       REDIS_URL: redis://redis:6379
       NODE_ENV: production
       LOG_LEVEL: info
+      FAIL_MODE: "false"
     depends_on:
       rabbitmq:
         condition: service_healthy

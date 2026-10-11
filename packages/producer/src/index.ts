@@ -1,13 +1,19 @@
+import path from 'node:path';
 import express from 'express';
 import { createLogger, config } from '@notification/shared';
 import { prisma } from './db';
 import notifyRouter from './routes/notify';
+import statusRouter from './routes/status';
+import queueStatusRouter from './routes/queueStatus';
 
 const logger = createLogger('producer');
 
 const app = express();
 app.use(express.json());
+app.use(express.static(path.join(__dirname, '../public')));
 app.use(notifyRouter);
+app.use(statusRouter);
+app.use(queueStatusRouter);
 
 app.use(
   (

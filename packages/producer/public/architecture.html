@@ -1,0 +1,749 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>RabbitMQ Notification System — Architecture Visualizer</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      :root {
+        --bg: #0d1117;
+        --surface: #161b22;
+        --surface2: #21262d;
+        --border: #30363d;
+        --text: #e6edf3;
+        --muted: #8b949e;
+        --accent: #58a6ff;
+        --producer: #1f6feb;
+        --route: #388bfd;
+        --shared: #d2a8ff;
+        --poller: #d29922;
+        --consumer: #bc8cff;
+        --redis: #ff7b72;
+        --rabbit: #ffa657;
+        --db: #f78166;
+        --infra: #56d364;
+        --types: #79c0ff;
+        --util: #8b949e;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", monospace;
+        background: var(--bg);
+        color: var(--text);
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      header {
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        padding: 12px 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-shrink: 0;
+        z-index: 10;
+      }
+      header h1 { font-size: 15px; font-weight: 600; }
+      header span { font-size: 11px; color: var(--muted); }
+      .phase-badge {
+        font-size: 10px;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-weight: 600;
+        margin-left: auto;
+        background: #1f3a1f;
+        color: #56d364;
+        border: 1px solid #2ea043;
+      }
+      header nav { display: flex; gap: 8px; }
+      header nav a {
+        font-size: 11px; color: var(--muted); text-decoration: none;
+        padding: 3px 8px; border-radius: 5px; border: 1px solid var(--border);
+      }
+      header nav a:hover { color: var(--text); }
+      .main { display: flex; flex: 1; overflow: hidden; }
+      .canvas-wrap { flex: 1; overflow: auto; position: relative; background: var(--bg); }
+      #canvas { position: relative; min-width: 1100px; padding: 28px 32px 48px; }
+      #svg-overlay {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        pointer-events: none; z-index: 0;
+      }
+      .layer { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; position: relative; z-index: 1; }
+      .layer-label {
+        font-size: 10px; font-weight: 700; letter-spacing: 1.2px;
+        text-transform: uppercase; color: var(--muted); margin-bottom: 4px; padding-left: 2px;
+      }
+      .layer-row { display: flex; flex-wrap: wrap; gap: 8px; }
+      .node {
+        display: inline-flex; align-items: center; gap: 7px;
+        padding: 7px 12px; border-radius: 7px;
+        background: var(--surface); border: 1px solid var(--border);
+        font-size: 12px; cursor: pointer;
+        transition: all 0.15s ease; user-select: none; position: relative;
+      }
+      .node:hover { transform: translateY(-1px); filter: brightness(1.15); }
+      .node.active { outline: 2px solid var(--accent); outline-offset: 1px; }
+      .node .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+      .node .filename { font-weight: 500; color: var(--text); }
+      .node .badge { font-size: 9px; padding: 1px 5px; border-radius: 4px; font-weight: 700; opacity: 0.85; }
+      .node.dead { opacity: 0.45; }
+      .node.dead .filename { text-decoration: line-through; }
+      .node[data-layer="producer"] { border-color: var(--producer); }
+      .node[data-layer="route"]    { border-color: var(--route); }
+      .node[data-layer="shared"]   { border-color: var(--shared); }
+      .node[data-layer="poller"]   { border-color: var(--poller); }
+      .node[data-layer="consumer"] { border-color: var(--consumer); }
+      .node[data-layer="redis"]    { border-color: var(--redis); }
+      .node[data-layer="rabbit"]   { border-color: var(--rabbit); }
+      .node[data-layer="db"]       { border-color: var(--db); }
+      .node[data-layer="infra"]    { border-color: var(--infra); }
+      .node[data-layer="types"]    { border-color: var(--types); }
+      .node[data-layer="util"]     { border-color: var(--util); }
+      .dot[data-layer="producer"] { background: var(--producer); }
+      .dot[data-layer="route"]    { background: var(--route); }
+      .dot[data-layer="shared"]   { background: var(--shared); }
+      .dot[data-layer="poller"]   { background: var(--poller); }
+      .dot[data-layer="consumer"] { background: var(--consumer); }
+      .dot[data-layer="redis"]    { background: var(--redis); }
+      .dot[data-layer="rabbit"]   { background: var(--rabbit); }
+      .dot[data-layer="db"]       { background: var(--db); }
+      .dot[data-layer="infra"]    { background: var(--infra); }
+      .dot[data-layer="types"]    { background: var(--types); }
+      .dot[data-layer="util"]     { background: var(--util); }
+
+      #panel {
+        width: 360px; flex-shrink: 0; background: var(--surface);
+        border-left: 1px solid var(--border);
+        display: flex; flex-direction: column; overflow: hidden;
+        transition: width 0.2s ease;
+      }
+      #panel.collapsed { width: 0; border: none; }
+      .panel-header {
+        padding: 14px 16px 10px; border-bottom: 1px solid var(--border);
+        display: flex; align-items: flex-start; justify-content: space-between; flex-shrink: 0;
+      }
+      .panel-header h2 { font-size: 13px; font-weight: 600; }
+      .panel-header .path { font-size: 10px; color: var(--muted); margin-top: 2px; font-family: monospace; }
+      .panel-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 16px; padding: 0 4px; line-height: 1; }
+      .panel-close:hover { color: var(--text); }
+      .panel-body { flex: 1; overflow-y: auto; padding: 14px 16px; }
+      .panel-section { margin-bottom: 16px; }
+      .panel-section h3 {
+        font-size: 10px; font-weight: 700; letter-spacing: 1px;
+        text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
+      }
+      .panel-section p { font-size: 12px; line-height: 1.6; color: #c9d1d9; }
+      .import-list { display: flex; flex-direction: column; gap: 4px; }
+      .import-item {
+        font-size: 11px; font-family: monospace; padding: 3px 8px;
+        border-radius: 4px; background: var(--surface2); color: #79c0ff;
+        cursor: pointer; transition: background 0.1s;
+      }
+      .import-item:hover { background: #1c2a3a; }
+      .key-list { list-style: none; }
+      .key-list li {
+        font-size: 11px; padding: 4px 0; border-bottom: 1px solid var(--border);
+        color: #c9d1d9; line-height: 1.5;
+      }
+      .key-list li:last-child { border: none; }
+      .code-block {
+        font-family: monospace; font-size: 11px; line-height: 1.5;
+        background: var(--surface2); padding: 8px 10px; border-radius: 4px;
+        color: #c9d1d9; white-space: pre-wrap; border: 1px solid var(--border);
+      }
+      .legend {
+        background: var(--surface); border-top: 1px solid var(--border);
+        padding: 8px 20px; display: flex; flex-wrap: wrap; gap: 12px;
+        flex-shrink: 0; z-index: 10;
+      }
+      .legend-item { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--muted); }
+      .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+      .conn { stroke-width: 1.5; fill: none; opacity: 0.3; }
+      .conn.highlight { opacity: 0.85; stroke-width: 2.5; }
+      .conn-producer { stroke: var(--producer); }
+      .conn-route    { stroke: var(--route); }
+      .conn-shared   { stroke: var(--shared); }
+      .conn-poller   { stroke: var(--poller); }
+      .conn-consumer { stroke: var(--consumer); }
+      .conn-redis    { stroke: var(--redis); }
+      .conn-rabbit   { stroke: var(--rabbit); }
+      .conn-db       { stroke: var(--db); }
+      .conn-infra    { stroke: var(--infra); }
+      .empty-panel {
+        flex: 1; display: flex; flex-direction: column;
+        align-items: center; justify-content: center;
+        color: var(--muted); gap: 8px; padding: 20px; text-align: center;
+      }
+      .empty-panel .icon { font-size: 32px; }
+      .empty-panel p { font-size: 12px; line-height: 1.5; }
+      ::-webkit-scrollbar { width: 6px; height: 6px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>🐰 RabbitMQ Notification System — Architecture Visualizer</h1>
+        <span>Distributed event-driven backend · Node.js + TS + RabbitMQ + Postgres + Redis</span>
+      </div>
+      <nav>
+        <a href="/">Home</a>
+        <a href="/demo.html">Live Demo</a>
+      </nav>
+      <span class="phase-badge">Outbox · Topic Exchange · Retry chain · Idempotent consumers</span>
+    </header>
+
+    <div class="main">
+      <div class="canvas-wrap">
+        <div id="canvas">
+          <svg id="svg-overlay"></svg>
+
+          <!-- PRODUCER -->
+          <div class="layer">
+            <div class="layer-label">Producer Service · HTTP API</div>
+            <div class="layer-row">
+              <div class="node" data-layer="producer" data-id="producer-index" id="node-producer-index">
+                <span class="dot" data-layer="producer"></span>
+                <span class="filename">packages/producer/src/index.ts</span>
+                <span class="badge" style="background:#1f2d4a;color:#58a6ff">ENTRY</span>
+              </div>
+              <div class="node" data-layer="route" data-id="notify-route" id="node-notify-route">
+                <span class="dot" data-layer="route"></span>
+                <span class="filename">producer/src/routes/notify.ts</span>
+                <span class="badge" style="background:#1f2d4a;color:#58a6ff">POST /notify</span>
+              </div>
+              <div class="node" data-layer="db" data-id="producer-db" id="node-producer-db">
+                <span class="dot" data-layer="db"></span>
+                <span class="filename">producer/src/db.ts</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- SHARED -->
+          <div class="layer">
+            <div class="layer-label">Shared Package (topology · contracts · config)</div>
+            <div class="layer-row">
+              <div class="node" data-layer="shared" data-id="shared-topology" id="node-shared-topology">
+                <span class="dot" data-layer="shared"></span>
+                <span class="filename">shared/src/topology.ts</span>
+                <span class="badge" style="background:#2d1f4a;color:#d2a8ff">TOPOLOGY</span>
+              </div>
+              <div class="node" data-layer="shared" data-id="shared-constants" id="node-shared-constants">
+                <span class="dot" data-layer="shared"></span>
+                <span class="filename">shared/src/constants.ts</span>
+              </div>
+              <div class="node" data-layer="types" data-id="shared-types" id="node-shared-types">
+                <span class="dot" data-layer="types"></span>
+                <span class="filename">shared/src/types.ts</span>
+              </div>
+              <div class="node" data-layer="shared" data-id="shared-config" id="node-shared-config">
+                <span class="dot" data-layer="shared"></span>
+                <span class="filename">shared/src/config.ts</span>
+              </div>
+              <div class="node" data-layer="util" data-id="shared-logger" id="node-shared-logger">
+                <span class="dot" data-layer="util"></span>
+                <span class="filename">shared/src/logger.ts</span>
+              </div>
+              <div class="node" data-layer="util" data-id="shared-index" id="node-shared-index">
+                <span class="dot" data-layer="util"></span>
+                <span class="filename">shared/src/index.ts</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- POLLER -->
+          <div class="layer">
+            <div class="layer-label">Outbox Poller Service · Transactional Drainer</div>
+            <div class="layer-row">
+              <div class="node" data-layer="poller" data-id="poller-index" id="node-poller-index">
+                <span class="dot" data-layer="poller"></span>
+                <span class="filename">outbox-poller/src/index.ts</span>
+                <span class="badge" style="background:#3a2d1a;color:#d29922">ENTRY</span>
+              </div>
+              <div class="node" data-layer="poller" data-id="poller-poller" id="node-poller-poller">
+                <span class="dot" data-layer="poller"></span>
+                <span class="filename">outbox-poller/src/poller.ts</span>
+                <span class="badge" style="background:#3a2d1a;color:#d29922">SKIP LOCKED</span>
+              </div>
+              <div class="node" data-layer="poller" data-id="poller-publisher" id="node-poller-publisher">
+                <span class="dot" data-layer="poller"></span>
+                <span class="filename">outbox-poller/src/publisher.ts</span>
+                <span class="badge" style="background:#3a2d1a;color:#d29922">PUBLISH</span>
+              </div>
+              <div class="node" data-layer="db" data-id="poller-db" id="node-poller-db">
+                <span class="dot" data-layer="db"></span>
+                <span class="filename">outbox-poller/src/db.ts</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- RABBITMQ TOPOLOGY -->
+          <div class="layer">
+            <div class="layer-label">RabbitMQ Topology (declared by shared/topology.ts)</div>
+            <div class="layer-row">
+              <div class="node" data-layer="rabbit" data-id="rk-exchange" id="node-rk-exchange">
+                <span class="dot" data-layer="rabbit"></span>
+                <span class="filename">notifications.exchange</span>
+                <span class="badge" style="background:#3a2d1a;color:#ffa657">topic</span>
+              </div>
+              <div class="node" data-layer="rabbit" data-id="rk-email1" id="node-rk-email1">
+                <span class="dot" data-layer="rabbit"></span>
+                <span class="filename">email.queue.1</span>
+                <span class="badge" style="background:#3a2d1a;color:#ffa657">email.1</span>
+              </div>
+              <div class="node" data-layer="rabbit" data-id="rk-email2" id="node-rk-email2">
+                <span class="dot" data-layer="rabbit"></span>
+                <span class="filename">email.queue.2</span>
+                <span class="badge" style="background:#3a2d1a;color:#ffa657">email.2</span>
+              </div>
+              <div class="node" data-layer="rabbit" data-id="rk-sms1" id="node-rk-sms1">
+                <span class="dot" data-layer="rabbit"></span>
+                <span class="filename">sms.queue.1</span>
+                <span class="badge" style="background:#3a2d1a;color:#ffa657">sms.1</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- RETRY CHAIN -->
+          <div class="layer">
+            <div class="layer-label">Retry Chain · DLX TTL Cascade</div>
+            <div class="layer-row">
+              <div class="node" data-layer="rabbit" data-id="rk-retryex" id="node-rk-retryex">
+                <span class="dot" data-layer="rabbit"></span>
+                <span class="filename">notifications.retry.exchange</span>
+                <span class="badge" style="background:#3a2d1a;color:#ffa657">direct</span>
+              </div>
+              <div class="node" data-layer="rabbit" data-id="rk-retry1s" id="node-rk-retry1s">
+                <span class="dot" data-layer="rabbit"></span>
+                <span class="filename">retry_1s</span>
+                <span class="badge" style="background:#3a2d1a;color:#ffa657">TTL 1s → retry_5s</span>
+              </div>
+              <div class="node" data-layer="rabbit" data-id="rk-retry5s" id="node-rk-retry5s">
+                <span class="dot" data-layer="rabbit"></span>
+                <span class="filename">retry_5s</span>
+                <span class="badge" style="background:#3a2d1a;color:#ffa657">TTL 5s → retry_30s</span>
+              </div>
+              <div class="node" data-layer="rabbit" data-id="rk-retry30s" id="node-rk-retry30s">
+                <span class="dot" data-layer="rabbit"></span>
+                <span class="filename">retry_30s</span>
+                <span class="badge" style="background:#3a2d1a;color:#ffa657">TTL 30s → DLQ</span>
+              </div>
+              <div class="node" data-layer="rabbit" data-id="rk-dlqex" id="node-rk-dlqex">
+                <span class="dot" data-layer="rabbit"></span>
+                <span class="filename">notifications.dlq.exchange</span>
+                <span class="badge" style="background:#3a1f1f;color:#ff7b72">direct</span>
+              </div>
+              <div class="node" data-layer="rabbit" data-id="rk-dlq" id="node-rk-dlq">
+                <span class="dot" data-layer="rabbit"></span>
+                <span class="filename">notifications.dlq</span>
+                <span class="badge" style="background:#3a1f1f;color:#ff7b72">terminal</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- CONSUMER -->
+          <div class="layer">
+            <div class="layer-label">Consumer Service · Idempotent Processing</div>
+            <div class="layer-row">
+              <div class="node" data-layer="consumer" data-id="consumer-index" id="node-consumer-index">
+                <span class="dot" data-layer="consumer"></span>
+                <span class="filename">consumer/src/index.ts</span>
+                <span class="badge" style="background:#2d1f4a;color:#bc8cff">ENTRY · prefetch=10</span>
+              </div>
+              <div class="node" data-layer="redis" data-id="consumer-redis" id="node-consumer-redis">
+                <span class="dot" data-layer="redis"></span>
+                <span class="filename">consumer/src/redis.ts</span>
+                <span class="badge" style="background:#3a1f1f;color:#ff7b72">SET NX EX 86400</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- INFRA -->
+          <div class="layer">
+            <div class="layer-label">Infrastructure</div>
+            <div class="layer-row">
+              <div class="node" data-layer="db" data-id="infra-pg" id="node-infra-pg">
+                <span class="dot" data-layer="db"></span>
+                <span class="filename">PostgreSQL · outbox table</span>
+              </div>
+              <div class="node" data-layer="redis" data-id="infra-redis" id="node-infra-redis">
+                <span class="dot" data-layer="redis"></span>
+                <span class="filename">Redis · idempotency:&lt;eventId&gt;</span>
+              </div>
+              <div class="node" data-layer="rabbit" data-id="infra-rabbit" id="node-infra-rabbit">
+                <span class="dot" data-layer="rabbit"></span>
+                <span class="filename">RabbitMQ broker</span>
+              </div>
+              <div class="node" data-layer="infra" data-id="infra-compose" id="node-infra-compose">
+                <span class="dot" data-layer="infra"></span>
+                <span class="filename">docker-compose.yml</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="panel">
+        <div class="empty-panel">
+          <div class="icon">🗂️</div>
+          <p>Click any node to see what it does, what data it passes, what it imports, and what calls it.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <div class="legend-item"><span class="legend-dot" style="background:var(--producer)"></span>Producer</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--route)"></span>Route</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--shared)"></span>Shared</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--poller)"></span>Poller</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--consumer)"></span>Consumer</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--rabbit)"></span>RabbitMQ</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--redis)"></span>Redis</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--db)"></span>Postgres</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--types)"></span>Types</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--util)"></span>Util</div>
+      <div class="legend-item"><span class="legend-dot" style="background:var(--infra)"></span>Infra</div>
+    </div>
+
+    <script>
+      const FILES = {
+        "producer-index": {
+          name: "packages/producer/src/index.ts",
+          desc: "Express bootstrap. Mounts notifyRouter, statusRouter, queueStatusRouter. Serves static frontend from public/. Handles SIGINT/SIGTERM with prisma.$disconnect().",
+          keyFacts: [
+            "app.use(express.json()) + routers",
+            "express.static serves index.html, demo.html, architecture.html",
+            "Global error middleware → 500 JSON",
+            "Graceful shutdown closes server + Prisma"
+          ],
+          imports: ["notify-route", "producer-db", "shared-config", "shared-logger"]
+        },
+        "notify-route": {
+          name: "packages/producer/src/routes/notify.ts",
+          desc: "POST /notify endpoint. Zod-validates {type, payload}, mints eventId + correlationId (UUID v4), writes a PENDING outbox row. Returns 202 with eventId+correlationId. No direct AMQP — strict outbox pattern.",
+          keyFacts: [
+            "Schema: z.object({ type: z.enum(['email','sms']), payload: z.record(z.unknown()) })",
+            "prisma.outbox.create({ id:eventId, event_type:type, payload:{...payload, correlationId}, status:'PENDING' })",
+            "Does NOT publish to RabbitMQ — that's the poller's job",
+            "Returns 202 Accepted (async contract)"
+          ],
+          imports: ["producer-db", "shared-logger"],
+          calledBy: ["producer-index"]
+        },
+        "producer-db": {
+          name: "packages/producer/src/db.ts",
+          desc: "Singleton PrismaClient for the producer process.",
+          keyFacts: ["Used only for outbox writes from the API"],
+          calledBy: ["notify-route", "producer-index"]
+        },
+        "shared-topology": {
+          name: "packages/shared/src/topology.ts",
+          desc: "Single source of truth for RabbitMQ topology. Asserts 3 exchanges (topic/direct/direct), 3 retry queues with TTL+DLX cascade, terminal DLQ, and main partitioned queues EMAIL_1/EMAIL_2/SMS_1 — all dead-lettering to retry_1s.",
+          keyFacts: [
+            "EXCHANGE: notifications.exchange (topic, durable)",
+            "RETRY_EXCHANGE: notifications.retry.exchange (direct)",
+            "DLQ_EXCHANGE: notifications.dlq.exchange (direct)",
+            "retry_1s ttl=1s → retry_5s ttl=5s → retry_30s ttl=30s → DLQ",
+            "Main queues: x-dead-letter-exchange=RETRY_EXCHANGE, x-dead-letter-routing-key=retry.1s",
+            "Called by both poller and consumer at boot — idempotent assertExchange/assertQueue"
+          ],
+          imports: ["shared-constants"],
+          calledBy: ["poller-index", "consumer-index"]
+        },
+        "shared-constants": {
+          name: "packages/shared/src/constants.ts",
+          desc: "EXCHANGE / RETRY_EXCHANGE / DLQ_EXCHANGE strings. QUEUES = {EMAIL_1:'email.queue.1', EMAIL_2:'email.queue.2', SMS_1:'sms.queue.1', RETRY_1S, RETRY_5S, RETRY_30S, DLQ}. ROUTING_KEYS map.",
+          keyFacts: [
+            "Frozen as `as const` for narrow types",
+            "Imported everywhere — never duplicate these strings"
+          ],
+          calledBy: ["shared-topology", "poller-publisher", "consumer-index"]
+        },
+        "shared-types": {
+          name: "packages/shared/src/types.ts",
+          desc: "Wire contract — the message that travels Postgres → RabbitMQ → consumer.",
+          keyFacts: [
+            "NotificationMessage { eventId, type:'email'|'sms', payload, correlationId, createdAt }",
+            "OutboxStatus = 'PENDING' | 'PROCESSED' | 'FAILED' (FAILED is unused in current code)"
+          ],
+          calledBy: ["poller-publisher", "consumer-index"]
+        },
+        "shared-config": {
+          name: "packages/shared/src/config.ts",
+          desc: "Centralised env config: rabbitmq.url, redis.url, producer.port, db url. Single bind point — never read process.env directly elsewhere.",
+          calledBy: ["producer-index", "poller-index", "consumer-index", "consumer-redis"]
+        },
+        "shared-logger": {
+          name: "packages/shared/src/logger.ts",
+          desc: "createLogger(name) factory. Pino-style structured logger with service-name binding.",
+          calledBy: ["producer-index", "notify-route", "poller-index", "poller-poller", "consumer-index"]
+        },
+        "shared-index": {
+          name: "packages/shared/src/index.ts",
+          desc: "Public barrel — re-exports config, logger, types, constants, topology setup, and sleep().",
+          imports: ["shared-config", "shared-logger", "shared-types", "shared-constants", "shared-topology"]
+        },
+        "poller-index": {
+          name: "packages/outbox-poller/src/index.ts",
+          desc: "Bootstraps the poller service. Waits for Postgres, retries AMQP up to 10x with exponential-ish backoff (capped 10s), creates a channel, asserts topology, then enters startPoller(channel).",
+          keyFacts: [
+            "Connection-level error/close → process.exit(1) (let orchestrator restart)",
+            "Graceful shutdown closes channel + connection + Prisma"
+          ],
+          imports: ["poller-db", "poller-poller", "shared-topology", "shared-config", "shared-logger"]
+        },
+        "poller-poller": {
+          name: "packages/outbox-poller/src/poller.ts",
+          desc: "Transactional drainer. processBatch() runs `prisma.$transaction` → `tx.$queryRaw SELECT … FOR UPDATE SKIP LOCKED LIMIT 50` → for each row calls publishEvent(channel,row); successful rows are bulk-updated to PROCESSED in the same tx. Failed publishes leave row PENDING.",
+          keyFacts: [
+            "BATCH_SIZE = 50",
+            "FOR UPDATE SKIP LOCKED → multiple poller replicas don't fight for rows",
+            "Drain loop: only sleeps 1s when batch < BATCH_SIZE; else immediately re-fetches",
+            "Outer try/catch sleeps 5s on iteration failure"
+          ],
+          imports: ["poller-db", "poller-publisher", "shared-logger"],
+          calledBy: ["poller-index"]
+        },
+        "poller-publisher": {
+          name: "packages/outbox-poller/src/publisher.ts",
+          desc: "Builds NotificationMessage from outbox row. Extracts correlationId from payload (fallback to row.id). Derives routingKey via getRoutingKey(). channel.publish(EXCHANGE, routingKey, buf, { persistent:true, contentType:'application/json', correlationId, messageId:row.id }). Throws if channel buffer full.",
+          keyFacts: [
+            "getRoutingKey: 'sms' → ROUTING_KEYS.SMS_1; else → ROUTING_KEYS.EMAIL_1",
+            "⚠️ eventId arg currently unused — no hash partitioning between email.1 and email.2",
+            "partitionHash() is dead code — no caller",
+            "messageId = eventId ⇒ traceability all the way through",
+            "persistent:true ⇒ delivery-mode=2 (durable)"
+          ],
+          imports: ["shared-constants", "shared-types"],
+          calledBy: ["poller-poller"]
+        },
+        "poller-db": {
+          name: "packages/outbox-poller/src/db.ts",
+          desc: "Singleton PrismaClient for the poller process.",
+          calledBy: ["poller-index", "poller-poller"]
+        },
+        "consumer-index": {
+          name: "packages/consumer/src/index.ts",
+          desc: "Consumer service entry. Connects Redis (lazy), connects RabbitMQ (10x retry), asserts topology, sets prefetch(10), then channel.consume() on EMAIL_1 AND EMAIL_2 with a shared handler. FAIL_MODE env var makes simulateProcessing throw → triggers retry chain.",
+          keyFacts: [
+            "Handler: JSON.parse → validate eventId is string → claimEvent(redis,eventId) → simulateProcessing → channel.ack",
+            "Malformed JSON / missing eventId ⇒ channel.ack (poison pill silently dropped — does NOT route to DLQ)",
+            "Duplicate (claimEvent returned false) ⇒ ack, skip processing",
+            "On thrown error ⇒ channel.nack(msg, false, false) ⇒ DLX → retry_1s",
+            "FAIL_MODE=true: simulateProcessing throws immediately → full retry chain fires",
+            "Currently does NOT consume sms.queue.1"
+          ],
+          imports: ["consumer-redis", "shared-topology", "shared-constants", "shared-types", "shared-config", "shared-logger"]
+        },
+        "consumer-redis": {
+          name: "packages/consumer/src/redis.ts",
+          desc: "ioredis client + idempotency primitive. claimEvent(redis,eventId) does `SET idempotency:<eventId> '1' EX 86400 NX` and returns true only on first claim — guarantees exactly-once *processing* on at-least-once *delivery*.",
+          keyFacts: [
+            "Key: idempotency:<eventId>  TTL: 86400s (24h)",
+            "lazyConnect:true, maxRetriesPerRequest:3",
+            "Returns boolean — first claim wins"
+          ],
+          imports: ["shared-config"],
+          calledBy: ["consumer-index"]
+        },
+        "rk-exchange": {
+          name: "notifications.exchange",
+          desc: "Topic exchange (durable). Sole publish target for the poller. Bindings: email.1→email.queue.1, email.2→email.queue.2, sms.1→sms.queue.1.",
+          keyFacts: ["Type: topic", "Durable: true", "Declared by shared/topology.ts"],
+          calledBy: ["poller-publisher"]
+        },
+        "rk-email1": {
+          name: "email.queue.1",
+          desc: "Main email partition. Receives messages with routing key email.1. Configured with x-dead-letter-exchange=notifications.retry.exchange, x-dead-letter-routing-key=retry.1s — so any nack/expiry sends the message into the retry chain.",
+          keyFacts: ["Bound to email.1", "DLX→retry_1s on nack(false,false)"],
+          calledBy: ["consumer-index"]
+        },
+        "rk-email2": {
+          name: "email.queue.2",
+          desc: "Second email partition. Bound to email.2. Consumer subscribes to it — but the publisher never produces email.2 today (getRoutingKey always returns email.1 for type=email). Real partitioning is currently inactive.",
+          keyFacts: [
+            "Bound to email.2 — never receives messages today",
+            "Fix: hash(eventId) % 2 in publisher.getRoutingKey to alternate partitions"
+          ],
+          calledBy: ["consumer-index"]
+        },
+        "rk-sms1": {
+          name: "sms.queue.1",
+          desc: "Main SMS partition. Bound to sms.1. Publisher emits here for type=sms. ⚠️ Consumer service does NOT subscribe to sms.queue.1 — sms messages currently sit unconsumed.",
+          keyFacts: ["Bound to sms.1", "No consumer wired in this repo"]
+        },
+        "rk-retryex": {
+          name: "notifications.retry.exchange",
+          desc: "Direct exchange. Receives dead-lettered messages from main queues and from earlier retry stages. Bindings: retry.1s→retry_1s, retry.5s→retry_5s, retry.30s→retry_30s.",
+          keyFacts: ["Type: direct", "Durable: true"]
+        },
+        "rk-retry1s": {
+          name: "retry_1s",
+          desc: "First retry stage. x-message-ttl=1000ms. After expiry, dead-letters via DLX=notifications.retry.exchange with routing key retry.5s → retry_5s.",
+          keyFacts: ["TTL 1s", "DLX→retry.5s"]
+        },
+        "rk-retry5s": {
+          name: "retry_5s",
+          desc: "Second retry stage. TTL 5s. DLX→retry.30s.",
+          keyFacts: ["TTL 5s", "DLX→retry.30s"]
+        },
+        "rk-retry30s": {
+          name: "retry_30s",
+          desc: "Third retry stage. TTL 30s. DLX→DLQ_EXCHANGE with routing key 'dlq' — terminal.",
+          keyFacts: ["TTL 30s", "DLX→DLQ_EXCHANGE"]
+        },
+        "rk-dlqex": {
+          name: "notifications.dlq.exchange",
+          desc: "Direct DLQ exchange. Single binding 'dlq' → notifications.dlq.",
+          keyFacts: ["Type: direct"]
+        },
+        "rk-dlq": {
+          name: "notifications.dlq",
+          desc: "Terminal queue for messages that exhausted the retry chain. No further DLX. No consumer wired in this repo — messages accumulate until manually inspected.",
+          keyFacts: ["No DLX", "No consumer — manual inspection only", "TODO: build a DLQ inspector / replayer"]
+        },
+        "infra-pg": {
+          name: "PostgreSQL · outbox table",
+          desc: "Outbox: id, event_type, payload (jsonb), status, retry_count, created_at, processed_at. Polled with FOR UPDATE SKIP LOCKED. Status only ever transitions PENDING→PROCESSED today; FAILED state is unused.",
+          keyFacts: [
+            "retry_count column exists but is never incremented",
+            "PROCESSED rows can be archived offline"
+          ]
+        },
+        "infra-redis": {
+          name: "Redis · idempotency",
+          desc: "Single namespace: idempotency:<eventId>. SET NX EX 86400. Guarantees a processed event is never re-handled within 24h, even if RabbitMQ redelivers it.",
+          calledBy: ["consumer-redis"]
+        },
+        "infra-rabbit": {
+          name: "RabbitMQ broker",
+          desc: "All exchanges/queues are declared lazily by shared/topology.ts at boot of poller and consumer. Idempotent — safe to re-run. Management UI at localhost:15672 (guest/guest).",
+        },
+        "infra-compose": {
+          name: "docker-compose.yml",
+          desc: "Local infra: Postgres, RabbitMQ (with management UI), Redis. Brings up the full stack for end-to-end testing. FAIL_MODE env var on consumer controls retry chain demo."
+        }
+      };
+
+      const CONNECTIONS = [
+        ["producer-index", "notify-route", "producer"],
+        ["notify-route", "producer-db", "producer"],
+        ["producer-db", "infra-pg", "db"],
+        ["poller-index", "poller-poller", "poller"],
+        ["poller-poller", "poller-publisher", "poller"],
+        ["poller-poller", "poller-db", "db"],
+        ["poller-db", "infra-pg", "db"],
+        ["poller-publisher", "rk-exchange", "rabbit"],
+        ["poller-index", "shared-topology", "shared"],
+        ["rk-exchange", "rk-email1", "rabbit"],
+        ["rk-exchange", "rk-email2", "rabbit"],
+        ["rk-exchange", "rk-sms1", "rabbit"],
+        ["rk-email1", "consumer-index", "consumer"],
+        ["rk-email2", "consumer-index", "consumer"],
+        ["consumer-index", "consumer-redis", "redis"],
+        ["consumer-redis", "infra-redis", "redis"],
+        ["consumer-index", "shared-topology", "shared"],
+        ["rk-email1", "rk-retryex", "rabbit"],
+        ["rk-email2", "rk-retryex", "rabbit"],
+        ["rk-sms1",   "rk-retryex", "rabbit"],
+        ["rk-retryex", "rk-retry1s", "rabbit"],
+        ["rk-retry1s", "rk-retry5s", "rabbit"],
+        ["rk-retry5s", "rk-retry30s", "rabbit"],
+        ["rk-retry30s", "rk-dlqex", "rabbit"],
+        ["rk-dlqex", "rk-dlq", "rabbit"],
+        ["shared-topology", "shared-constants", "shared"],
+        ["poller-publisher", "shared-constants", "shared"],
+        ["poller-publisher", "shared-types", "shared"],
+        ["consumer-index",   "shared-constants", "shared"],
+        ["consumer-index",   "shared-types", "shared"],
+        ["notify-route",     "shared-logger", "shared"],
+        ["consumer-redis",   "shared-config", "shared"],
+        ["infra-rabbit", "rk-exchange", "infra"],
+      ];
+
+      let activeId = null;
+
+      function getCenter(el) {
+        const r = el.getBoundingClientRect();
+        const c = document.getElementById("canvas").getBoundingClientRect();
+        return { x: r.left - c.left + r.width / 2, y: r.top - c.top + r.height / 2 };
+      }
+
+      function drawConnections(focusId) {
+        const svg = document.getElementById("svg-overlay");
+        const canvas = document.getElementById("canvas");
+        svg.setAttribute("width", canvas.scrollWidth);
+        svg.setAttribute("height", canvas.scrollHeight);
+        svg.innerHTML = "";
+        CONNECTIONS.forEach(([from, to, cls]) => {
+          const fromEl = document.getElementById("node-" + from);
+          const toEl = document.getElementById("node-" + to);
+          if (!fromEl || !toEl) return;
+          const a = getCenter(fromEl), b = getCenter(toEl);
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("d", `M${a.x},${a.y} C${a.x + dx * 0.2},${a.y + dy * 0.6} ${b.x - dx * 0.2},${b.y - dy * 0.4} ${b.x},${b.y}`);
+          path.setAttribute("class", `conn conn-${cls}`);
+          const involved = !focusId || from === focusId || to === focusId;
+          if (involved && focusId) path.classList.add("highlight");
+          else if (focusId) path.style.opacity = "0.05";
+          svg.appendChild(path);
+        });
+      }
+
+      function showPanel(id) {
+        const file = FILES[id];
+        const panel = document.getElementById("panel");
+        if (!file) return;
+        const importLinks = (file.imports || []).filter(i => FILES[i])
+          .map(imp => `<div class="import-item" onclick="selectNode('${imp}')">${FILES[imp].name}</div>`).join("");
+        const calledByLinks = (file.calledBy || []).filter(c => FILES[c])
+          .map(c => `<div class="import-item" onclick="selectNode('${c}')">${FILES[c].name}</div>`).join("");
+        const keyFacts = (file.keyFacts || []).map(f => `<li>${f}</li>`).join("");
+        panel.innerHTML = `
+<div class="panel-header">
+  <div>
+    <h2>${file.name.split("/").pop()}</h2>
+    <div class="path">${file.name}</div>
+  </div>
+  <button class="panel-close" onclick="closePanel()">✕</button>
+</div>
+<div class="panel-body">
+  <div class="panel-section"><h3>What it does</h3><p>${file.desc}</p></div>
+  ${keyFacts ? `<div class="panel-section"><h3>Key facts</h3><ul class="key-list">${keyFacts}</ul></div>` : ""}
+  ${importLinks ? `<div class="panel-section"><h3>Imports / depends on</h3><div class="import-list">${importLinks}</div></div>` : ""}
+  ${calledByLinks ? `<div class="panel-section"><h3>Called by</h3><div class="import-list">${calledByLinks}</div></div>` : ""}
+</div>`;
+      }
+
+      function selectNode(id) {
+        if (activeId) { const old = document.getElementById("node-" + activeId); if (old) old.classList.remove("active"); }
+        if (activeId === id) { activeId = null; closePanel(); drawConnections(null); return; }
+        activeId = id;
+        const el = document.getElementById("node-" + id);
+        if (el) { el.classList.add("active"); el.scrollIntoView({ behavior: "smooth", block: "nearest" }); }
+        showPanel(id);
+        drawConnections(id);
+      }
+
+      function closePanel() {
+        activeId = null;
+        document.querySelectorAll(".node.active").forEach(n => n.classList.remove("active"));
+        document.getElementById("panel").innerHTML = `<div class="empty-panel"><div class="icon">🗂️</div><p>Click any node to see what it does, what data it passes, what it imports, and what calls it.</p></div>`;
+        drawConnections(null);
+      }
+
+      document.querySelectorAll(".node").forEach(node => {
+        node.addEventListener("click", () => selectNode(node.dataset.id));
+      });
+
+      window.addEventListener("load", () => drawConnections(null));
+      window.addEventListener("resize", () => drawConnections(activeId));
+      document.querySelector(".canvas-wrap").addEventListener("scroll", () => drawConnections(activeId));
+      setTimeout(() => drawConnections(null), 100);
+    </script>
+  </body>
+</html>

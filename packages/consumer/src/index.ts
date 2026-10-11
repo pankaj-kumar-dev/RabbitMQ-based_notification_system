@@ -11,6 +11,7 @@ import {
 import { createRedisClient, claimEvent } from './redis';
 
 const logger = createLogger('consumer');
+const FAIL_MODE = process.env.FAIL_MODE === 'true';
 
 type Connection = Awaited<ReturnType<typeof amqp.connect>>;
 
@@ -32,6 +33,7 @@ async function connectRabbitMQ(): Promise<Connection> {
 }
 
 async function simulateProcessing(message: NotificationMessage): Promise<void> {
+  if (FAIL_MODE) throw new Error('Simulated failure — activating retry chain');
   const delay = 50 + Math.random() * 100;
   await sleep(delay);
   logger.info(

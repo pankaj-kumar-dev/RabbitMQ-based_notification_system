@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <title>Distributed Notification System</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      :root {
+        --bg: #0d1117; --surface: #161b22; --border: #30363d;
+        --text: #e6edf3; --muted: #8b949e; --accent: #58a6ff;
+        --green: #56d364; --orange: #ffa657; --purple: #d2a8ff;
+        --red: #ff7b72;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: var(--bg); color: var(--text);
+        min-height: 100vh; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; padding: 40px 20px;
+      }
+      .card {
+        background: var(--surface); border: 1px solid var(--border);
+        border-radius: 12px; padding: 48px 56px; max-width: 680px; width: 100%;
+      }
+      .eyebrow {
+        font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
+        text-transform: uppercase; color: var(--accent); margin-bottom: 16px;
+      }
+      h1 { font-size: 28px; font-weight: 700; line-height: 1.25; margin-bottom: 16px; }
+      .desc { font-size: 15px; line-height: 1.7; color: #c9d1d9; margin-bottom: 32px; }
+      .concepts {
+        display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 32px;
+      }
+      .concept {
+        font-size: 11px; font-weight: 600; padding: 4px 10px;
+        border-radius: 20px; border: 1px solid;
+      }
+      .c-outbox  { color: var(--orange); border-color: var(--orange); background: rgba(255,166,87,.08); }
+      .c-rabbit  { color: #ffa657;       border-color: #ffa657;       background: rgba(255,166,87,.08); }
+      .c-dlq     { color: var(--red);    border-color: var(--red);    background: rgba(255,123,114,.08); }
+      .c-redis   { color: var(--red);    border-color: var(--red);    background: rgba(255,123,114,.08); }
+      .c-ts      { color: var(--accent); border-color: var(--accent); background: rgba(88,166,255,.08); }
+      .c-pg      { color: var(--purple); border-color: var(--purple); background: rgba(210,168,255,.08); }
+      .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 40px; }
+      .btn {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 11px 20px; border-radius: 8px; font-size: 14px; font-weight: 600;
+        text-decoration: none; cursor: pointer; border: none;
+        transition: filter 0.15s;
+      }
+      .btn:hover { filter: brightness(1.1); }
+      .btn-primary { background: var(--accent); color: #0d1117; }
+      .btn-secondary {
+        background: transparent; color: var(--text);
+        border: 1px solid var(--border);
+      }
+      .stack { border-top: 1px solid var(--border); padding-top: 28px; }
+      .stack-label {
+        font-size: 10px; font-weight: 700; letter-spacing: 1px;
+        text-transform: uppercase; color: var(--muted); margin-bottom: 14px;
+      }
+      .stack-row { display: flex; flex-wrap: wrap; gap: 10px; }
+      .stack-item {
+        font-size: 12px; color: var(--muted);
+        background: #21262d; border: 1px solid var(--border);
+        padding: 4px 10px; border-radius: 5px;
+      }
+      .github-link {
+        display: block; text-align: center; margin-top: 24px;
+        font-size: 12px; color: var(--muted); text-decoration: none;
+      }
+      .github-link:hover { color: var(--text); }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div class="eyebrow">Backend Portfolio Project</div>
+      <h1>Distributed Notification System</h1>
+      <p class="desc">
+        Event-driven notification pipeline built on the Transactional Outbox pattern.
+        Guarantees at-least-once delivery from API ingestion through RabbitMQ to
+        partitioned consumers, with Redis-backed idempotency and a TTL-based
+        cascading retry chain terminating in a dead-letter queue.
+      </p>
+
+      <div class="concepts">
+        <span class="concept c-outbox">Transactional Outbox</span>
+        <span class="concept c-rabbit">RabbitMQ Topic Exchange</span>
+        <span class="concept c-dlq">DLQ Retry Chain</span>
+        <span class="concept c-redis">Redis Idempotency</span>
+        <span class="concept c-pg">FOR UPDATE SKIP LOCKED</span>
+        <span class="concept c-ts">At-Least-Once Delivery</span>
+      </div>
+
+      <div class="actions">
+        <a class="btn btn-primary" href="/demo.html">▶ Live Demo</a>
+        <a class="btn btn-secondary" href="/architecture.html">Architecture</a>
+      </div>
+
+      <div class="stack">
+        <div class="stack-label">Tech Stack</div>
+        <div class="stack-row">
+          <span class="stack-item">Node.js 20</span>
+          <span class="stack-item">TypeScript 5 (strict)</span>
+          <span class="stack-item">RabbitMQ 3.13</span>
+          <span class="stack-item">PostgreSQL 16</span>
+          <span class="stack-item">Redis 7</span>
+          <span class="stack-item">Prisma 5</span>
+          <span class="stack-item">Express 4</span>
+          <span class="stack-item">Docker Compose</span>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
